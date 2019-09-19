@@ -1,6 +1,6 @@
 {
     "public": true,
-    "alias": "stats.mechmania.io",
+    "alias": "admin.mechmania.io",
     "type": "docker",
     "features": {
       "cloud": "v2"

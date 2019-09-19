@@ -1,3 +1,3 @@
-# stats
+# admin
 
-microservice on now.sh to get stats for a user
+microservice on now.sh to get admin info (like getting a leaderboard)

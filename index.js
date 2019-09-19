@@ -4,60 +4,91 @@ const mongoose = require("mongoose");
 const authenticate = require("mm-authenticate")(mongoose);
 const { send } = require("micro");
 const { router, get } = require("microrouter");
-const { Script, Match } = require("mm-schemas")(mongoose);
+const { Team, Match } = require("mm-schemas")(mongoose);
 const fetch = require("node-fetch");
 
 mongoose.connect(process.env.MONGO_URL);
 mongoose.Promise = global.Promise;
 
-const getStatsForScript = async (req, res, key) => {
-  console.log(`${req.user.name} - Getting matches for ${key}`);
-  const matchesReq = await fetch(
-    `https://matches.mechmania.io/matches/${key}`,
-    {
-      headers: {
-        Authorization: `Bearer ${req.user.token}`
-      }
-    }
-  );
-  const matches = await matchesReq.json();
-  console.log(`${req.user.name} - Calculating Wins/Losses`);
-  let wins = 0;
-  let losses = 0;
-  let ties = 0;
-  matches.forEach(({ match: { key: matchKey, winner } }) => {
-    const p2 = matchKey.split(":")[1];
-    if (winner === 3) {
-      ties++;
-    } else if (p2 === key) {
-      // Logged in player was p2;
-      if (winner === 2) {
-        wins++;
-      } else {
-        losses++;
-      }
-    } else {
-      // Logged in player was p1;
-      if (winner === 1) {
-        wins++;
-      } else {
-        losses++;
-      }
-    }
-  });
-  return send(res, 200, { wins, losses, ties });
+const getMatchKey = (me, other) => {
+  const [p1, p2] = [me, other].sort();
+  return `logs/${p1}:${p2}`;
 };
 
 module.exports = authenticate(
   router(
-    get("/", async (req, res) => {
+    get("/leaderboard", async (req, res) => {
       const team = req.user;
-      console.log(`${team.name} - Getting script`);
-      const script = await Script.findById(team.latestScript).exec();
-      return getStatsForScript(req, res, script.key);
-    }),
-    get("/:script", async (req, res) =>
-      getStatsForScript(req, res, req.params.script)
-    )
+      if (!team.admin) {
+        return send(res, 401, "Unauthorized");
+      }
+      console.log("Getting teams");
+      const teams = await Team.find({})
+        .populate("latestScript")
+        .exec();
+      const scripts = teams
+        .filter(t => t.latestScript)
+        .map(t => t.latestScript.key);
+
+      const scoreMap = {};
+      teams.filter(t => t.latestScript).forEach(t => {
+        scoreMap[t.latestScript.key] = {
+          team: t,
+          wins: 0,
+          losses: 0,
+          ties: 0,
+          score: 0,
+          left: []
+        };
+      });
+
+      let { matches } = scripts.reduce(
+        (p, c) => {
+          p.opponents.forEach(o => {
+            p.matches.push(getMatchKey(c, o));
+          });
+          p.opponents.push(c);
+          return p;
+        },
+        {
+          opponents: [],
+          matches: []
+        }
+      );
+
+      matches = await Promise.all(
+        matches.map(async key => ({
+          key,
+          match: await Match.findOne({ key }).exec()
+        }))
+      );
+
+      matches.forEach(({ key, match }) => {
+        const [p1, p2] = key.slice("logs/".length).split(":");
+        if (!match) {
+          scoreMap[p1].left.push(p2);
+          scoreMap[p2].left.push(p1);
+          return;
+        }
+        console.log(p1, p2, match.winner);
+        if (match.winner === 3) {
+          scoreMap[p1].ties++;
+          scoreMap[p1].score++;
+          scoreMap[p2].ties++;
+          scoreMap[p2].score++;
+        } else if (match.winner === 2) {
+          scoreMap[p1].losses++;
+
+          scoreMap[p2].wins++;
+          scoreMap[p2].score += 3;
+        } else {
+          scoreMap[p2].losses++;
+
+          scoreMap[p1].wins++;
+          scoreMap[p1].score += 3;
+        }
+      });
+      return send(res, 200, { scores: scoreMap });
+    })
   )
 );
