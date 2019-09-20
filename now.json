@@ -1,11 +1,9 @@
 {
     "public": true,
     "alias": "admin.mechmania.io",
-    "type": "docker",
-    "features": {
-      "cloud": "v2"
-    },
     "env": {
-      "MONGO_URL": "@mongo"
-    }
+      "MONGO_URL": "@mongo-url"
+    },
+    "builds": [{ "src": "index.js", "use": "@now/node" }],
+    "routes": [{ "src": "/.*", "dest": "index.js" }]
   }
