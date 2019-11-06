@@ -6,7 +6,7 @@
   "dependencies": {
     "mm-authenticate": "0.0.10",
     "mm-schemas": "0.0.10",
-    "mongoose": "5.7.1",
+    "mongoose": "5.7.5",
     "node-fetch": "2.6.0"
   }
 }
